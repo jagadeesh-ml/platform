@@ -1,0 +1,5 @@
+apiVersion: v2
+name: base-service
+version: 0.1.0
+description: Base chart for all microservices
+type: application
