@@ -15,24 +15,54 @@ permissions:
   packages: write
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-
-      - name: Install dependencies (if Node service)
+      # --- Optional: Node setup (safe no-op for non-Node services) ---
+      - name: Detect package.json
+        id: detect_pkg
         run: |
-          if [ -f "${{ inputs.path_filter }}/package-lock.json" ]; then
-            cd "${{ inputs.path_filter }}" && npm ci
-          elif [ -f "${{ inputs.path_filter }}/package.json" ]; then
-            cd "${{ inputs.path_filter }}" && npm install
+          if [[ -f "${{ inputs.path_filter }}/package.json" ]]; then
+            echo "has_node=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_node=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set up Node (if Node service)
+        if: steps.detect_pkg.outputs.has_node == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ${{ inputs.path_filter }}/package-lock.json
+
+      - name: Install deps (if Node)
+        if: steps.detect_pkg.outputs.has_node == 'true'
+        working-directory: ${{ inputs.path_filter }}
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Run unit tests (if Node and tests exist)
+        if: steps.detect_pkg.outputs.has_node == 'true'
+        working-directory: ${{ inputs.path_filter }}
+        run: |
+          if jq -e '.scripts.test' package.json >/dev/null 2>&1; then
+            npm test --silent --if-present
+          else
+            echo "No test script; skipping."
+          fi
+
+      # --- Docker multi-arch build & push to GHCR ---
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -46,10 +76,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push (linux/amd64)
+      - name: Build & Push (multi-arch)
         uses: docker/build-push-action@v5
         with:
           context: ${{ inputs.path_filter }}
-          platforms: linux/amd64
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ghcr.io/${{ github.repository_owner }}/${{ inputs.service_name }}:sha-${{ github.sha }}
+
+      - name: Print pushed tag
+        run: echo "PUSHED ghcr.io/${{ github.repository_owner }}/${{ inputs.service_name }}:sha-${{ github.sha }}"
