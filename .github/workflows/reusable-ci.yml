@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: "18"
 
-      - name: Install dependencies
+      - name: Install dependencies (if Node service)
         run: |
           if [ -f "${{ inputs.path_filter }}/package-lock.json" ]; then
             cd "${{ inputs.path_filter }}" && npm ci
