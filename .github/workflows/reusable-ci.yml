@@ -24,7 +24,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Detect Node repo + lockfile ---
+      # Produce a lowercase owner for GHCR (no toLower() in Actions expressions)
+      - name: Compute lowercase owner
+        id: owner
+        run: |
+          echo "lc=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      # --- Detect Node repo + lockfile (optional) ---
       - name: Detect Node & lockfile
         id: detect
         run: |
@@ -41,7 +47,6 @@ jobs:
           echo "has_node=$has_node" >> "$GITHUB_OUTPUT"
           echo "lock_path=$lock_path" >> "$GITHUB_OUTPUT"
 
-      # --- Setup Node only if it's a Node repo ---
       - name: Set up Node
         if: steps.detect.outputs.has_node == 'true'
         uses: actions/setup-node@v4
@@ -70,7 +75,7 @@ jobs:
             echo "No test script; skipping."
           fi
 
-      # --- Multi-arch image build & push to GHCR ---
+      # --- Docker multi-arch build & push to GHCR ---
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -90,7 +95,7 @@ jobs:
           context: ${{ inputs.path_filter }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/${{ inputs.service_name }}:sha-${{ github.sha }}
+          tags: ghcr.io/${{ steps.owner.outputs.lc }}/${{ inputs.service_name }}:sha-${{ github.sha }}
 
       - name: Print pushed tag
-        run: echo "PUSHED ghcr.io/${{ github.repository_owner }}/${{ inputs.service_name }}:sha-${{ github.sha }}"
+        run: echo "PUSHED ghcr.io/${{ steps.owner.outputs.lc }}/${{ inputs.service_name }}:sha-${{ github.sha }}"
