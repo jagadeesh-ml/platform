@@ -17,9 +17,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GHCR_OWNER: jagadeesh-ml
-      IMAGE: ghcr.io/${{ env.GHCR_OWNER }}/${{ inputs.service_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,10 +27,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
+          if [ -f "${{ inputs.path_filter }}/package-lock.json" ]; then
+            cd "${{ inputs.path_filter }}" && npm ci
+          elif [ -f "${{ inputs.path_filter }}/package.json" ]; then
+            cd "${{ inputs.path_filter }}" && npm install
           fi
 
       - name: Set up QEMU
@@ -55,4 +52,4 @@ jobs:
           context: ${{ inputs.path_filter }}
           platforms: linux/amd64
           push: true
-          tags: ${{ env.IMAGE }}:sha-${{ github.sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/${{ inputs.service_name }}:sha-${{ github.sha }}
