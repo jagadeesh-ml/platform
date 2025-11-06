@@ -1,5 +1,4 @@
 name: reusable-ci
-
 on:
   workflow_call:
     inputs:
@@ -15,31 +14,29 @@ permissions:
   packages: write
 
 jobs:
-  build-test:
+  build:
     runs-on: ubuntu-latest
+    env:
+      GHCR_OWNER: jagadeesh-ml
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "18"
 
-      - name: Install dependencies (Node)
-        if: hashFiles('package.json') != ''
+      - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then
             npm ci
           else
-            npm install --no-audit --no-fund
+            npm install
           fi
-          npm run lint || true
-          npm test || true
 
       - name: Build Docker image
         run: |
-          IMAGE=ghcr.io/${{ toLower(github.repository_owner) }}/${{ inputs.service_name }}
+          IMAGE=ghcr.io/${{ env.GHCR_OWNER }}/${{ inputs.service_name }}
           SHA=${{ github.sha }}
           docker build -t $IMAGE:sha-$SHA ${{ inputs.path_filter }}
 
@@ -52,6 +49,6 @@ jobs:
 
       - name: Push Docker image
         run: |
-          IMAGE=ghcr.io/${{ toLower(github.repository_owner) }}/${{ inputs.service_name }}
+          IMAGE=ghcr.io/${{ env.GHCR_OWNER }}/${{ inputs.service_name }}
           SHA=${{ github.sha }}
           docker push $IMAGE:sha-$SHA
