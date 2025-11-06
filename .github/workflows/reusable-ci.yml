@@ -24,26 +24,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Optional: Node setup (safe no-op for non-Node services) ---
-      - name: Detect package.json
-        id: detect_pkg
+      # --- Detect Node repo + lockfile ---
+      - name: Detect Node & lockfile
+        id: detect
         run: |
-          if [[ -f "${{ inputs.path_filter }}/package.json" ]]; then
-            echo "has_node=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_node=false" >> "$GITHUB_OUTPUT"
+          ROOT="${{ inputs.path_filter }}"
+          has_node="false"
+          lock_path=""
+          if [[ -f "$ROOT/package.json" ]]; then
+            has_node="true"
+            if   [[ -f "$ROOT/package-lock.json" ]]; then lock_path="$ROOT/package-lock.json"
+            elif [[ -f "$ROOT/pnpm-lock.yaml"   ]]; then lock_path="$ROOT/pnpm-lock.yaml"
+            elif [[ -f "$ROOT/yarn.lock"        ]]; then lock_path="$ROOT/yarn.lock"
+            fi
           fi
+          echo "has_node=$has_node" >> "$GITHUB_OUTPUT"
+          echo "lock_path=$lock_path" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Node (if Node service)
-        if: steps.detect_pkg.outputs.has_node == 'true'
+      # --- Setup Node only if it's a Node repo ---
+      - name: Set up Node
+        if: steps.detect.outputs.has_node == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: ${{ inputs.path_filter }}/package-lock.json
+          cache: ${{ steps.detect.outputs.lock_path != '' && 'npm' || '' }}
+          cache-dependency-path: ${{ steps.detect.outputs.lock_path }}
 
-      - name: Install deps (if Node)
-        if: steps.detect_pkg.outputs.has_node == 'true'
+      - name: Install deps (Node)
+        if: steps.detect.outputs.has_node == 'true'
         working-directory: ${{ inputs.path_filter }}
         run: |
           if [[ -f package-lock.json ]]; then
@@ -52,8 +60,8 @@ jobs:
             npm install
           fi
 
-      - name: Run unit tests (if Node and tests exist)
-        if: steps.detect_pkg.outputs.has_node == 'true'
+      - name: Run unit tests (Node, if script exists)
+        if: steps.detect.outputs.has_node == 'true'
         working-directory: ${{ inputs.path_filter }}
         run: |
           if jq -e '.scripts.test' package.json >/dev/null 2>&1; then
@@ -62,7 +70,7 @@ jobs:
             echo "No test script; skipping."
           fi
 
-      # --- Docker multi-arch build & push to GHCR ---
+      # --- Multi-arch image build & push to GHCR ---
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -80,8 +88,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ inputs.path_filter }}
-          push: true
           platforms: linux/amd64,linux/arm64
+          push: true
           tags: ghcr.io/${{ github.repository_owner }}/${{ inputs.service_name }}:sha-${{ github.sha }}
 
       - name: Print pushed tag
